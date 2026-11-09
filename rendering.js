@@ -14,13 +14,19 @@ function scheduleRender() {
     rafId = requestAnimationFrame(frame);
   }
 }
-function invalidateAll() { dirty.stage = dirty.chirpPlot = dirty.energyPlot = true; scheduleRender(); }
+function invalidateAll() {
+  dirty.stage = dirty.chirpPlot = dirty.energyPlot = true;
+  drawAllDirty();
+  scheduleRender();
+}
 
 const resizeObserver = new ResizeObserver((entries) => {
   for (const { target: c } of entries) {
     const b = c.getBoundingClientRect(), d = devicePixelRatio || 1;
     const w = Math.round(b.width * d), h = Math.round(b.height * d);
-    if (c.width !== w || c.height !== h) { c.width = w; c.height = h; dirty[c.id] = true; }
+    if (w > 0 && h > 0 && (c.width !== w || c.height !== h)) {
+      c.width = w; c.height = h; dirty[c.id] = true;
+    }
   }
   scheduleRender();
 });
@@ -29,7 +35,8 @@ canvases.forEach((c) => resizeObserver.observe(c));
 document.addEventListener("contentvisibilityautostatechange", (e) => {
   const t = e.target, c = t && (t.tagName === "CANVAS" ? t : t.querySelector && t.querySelector("canvas"));
   if (c && dirty[c.id] !== undefined) {
-    if (e.skipped) visibleCanvases.delete(c.id); else visibleCanvases.add(c.id);
+    if (e.skipped) visibleCanvases.delete(c.id);
+    else { visibleCanvases.add(c.id); dirty[c.id] = true; }
     scheduleRender();
   }
 }, { capture: true });
@@ -37,7 +44,8 @@ document.addEventListener("contentvisibilityautostatechange", (e) => {
 if ("IntersectionObserver" in window) {
   const io = new IntersectionObserver((entries) => {
     for (const e of entries) {
-      if (e.isIntersecting) visibleCanvases.add(e.target.id); else visibleCanvases.delete(e.target.id);
+      if (e.isIntersecting) { visibleCanvases.add(e.target.id); dirty[e.target.id] = true; }
+      else visibleCanvases.delete(e.target.id);
     }
     scheduleRender();
   }, { rootMargin: "200px" });
@@ -46,7 +54,11 @@ if ("IntersectionObserver" in window) {
 document.addEventListener("visibilitychange", scheduleRender);
 
 function prepCanvas(id) {
-  const c = $(id), ctx = contexts.get(id), d = devicePixelRatio || 1, w = c.width / d, h = c.height / d;
+  const c = $(id), ctx = contexts.get(id), d = devicePixelRatio || 1, b = c.getBoundingClientRect();
+  const w = Math.max(200, b.width || c.clientWidth || 600);
+  const h = Math.max(150, b.height || c.clientHeight || (id === "stage" ? 390 : 235));
+  const pw = Math.round(w * d), ph = Math.round(h * d);
+  if (c.width !== pw || c.height !== ph) { c.width = pw; c.height = ph; }
   ctx.setTransform(d, 0, 0, d, 0, 0);
   return { ctx, w, h, d };
 }
@@ -201,6 +213,12 @@ function drawEnergyPlot() {
   ctx.strokeStyle = "#ffffff66"; ctx.beginPath(); ctx.moveTo(px, T); ctx.lineTo(px, B); ctx.stroke();
 }
 
+function drawAllDirty() {
+  if (dirty.stage && visibleCanvases.has("stage")) { drawStage(); dirty.stage = false; }
+  if (dirty.chirpPlot && visibleCanvases.has("chirpPlot")) { drawChirpPlot(); dirty.chirpPlot = false; }
+  if (dirty.energyPlot && visibleCanvases.has("energyPlot")) { drawEnergyPlot(); dirty.energyPlot = false; }
+}
+
 function frame(now) {
   rafId = 0;
   if (document.hidden) return;
@@ -218,8 +236,9 @@ function frame(now) {
     dirty.stage = dirty.chirpPlot = dirty.energyPlot = true;
   }
   lastFrameTime = now;
-  if (dirty.stage && visibleCanvases.has("stage")) { drawStage(); dirty.stage = false; }
-  if (dirty.chirpPlot && visibleCanvases.has("chirpPlot")) { drawChirpPlot(); dirty.chirpPlot = false; }
-  if (dirty.energyPlot && visibleCanvases.has("energyPlot")) { drawEnergyPlot(); dirty.energyPlot = false; }
+  drawAllDirty();
   if (playing) rafId = requestAnimationFrame(frame);
 }
+
+rebuildSimulation(true);
+renderTrials();

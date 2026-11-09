@@ -237,5 +237,3 @@ if (!("closedBy" in HTMLDialogElement.prototype)) {
 }
 
 window.addEventListener("pagehide", () => { playing = false; silenceAudio(); stopLoop(); });
-rebuildSimulation(true);
-renderTrials();
